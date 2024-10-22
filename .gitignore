@@ -1,4 +1,4 @@
-*.txt
+*password*.txt
 archive.py
 gpt.py
 brute-ssh.log
