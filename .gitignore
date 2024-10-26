@@ -1,7 +1,10 @@
-*password*.txt
+*.txt
+*.log
+
 archive.py
 gpt.py
-brute-ssh.log
-hydra.restore
 test.py
+
+hydra.restore
 pyvenv/
+*cache*

