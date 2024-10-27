@@ -8,8 +8,8 @@ import queue  # Thread-safe data handling
 import sys
 from typing import List, Optional
 
-from kaseki.brutemanager.target import Target
-from kaseki.ssh.sshbruteforce import *
+from kaseki.bruteforce.target import Target
+from kaseki.bruteforce.ssh.sshbruteforce import *
 from kaseki.utils.producer import PasswordProducer
 from kaseki.utils.consumer import PasswordConsumer
 from kaseki.utils import queuecontent
@@ -141,7 +141,7 @@ class SSHBruteForceManager:
         """
         for _ in range(process_n):
             brute_forcer: SSHBruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
-            brute_forcer_proc = brute_forcer.multiprocessed_run()
+            brute_forcer_proc = multiprocessing.Process(target=brute_forcer.start)
             self.running_bruteforce_proc.append(brute_forcer_proc)
 
         # Waits for all brute-forcer processes to complete
@@ -155,7 +155,7 @@ class SSHBruteForceManager:
             login_thread_n_each (int): Number of threads for brute-forcing.
         """
         brute_forcer: SSHBruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
-        brute_forcer.run()
+        brute_forcer.start()
 
     def create_bruteforcer(self, login_thread_n=0) -> SSHBruteForcer:
         """
@@ -171,7 +171,7 @@ class SSHBruteForceManager:
             target=self.target,
             passwords_queue=self.passwords_queue,
             results_queue=self.results_queue,
-            login_thread_n=login_thread_n,
+            thread_n=login_thread_n,
         )
 
     def wait_for_bruteforcer_procs(self) -> None:

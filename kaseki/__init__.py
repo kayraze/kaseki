@@ -1,2 +1,2 @@
-from kaseki.ssh.sshbruteforce import SSHTarget
-from kaseki.ssh.sshbruteforcemanager import SSHBruteForceManager
+from kaseki.bruteforce.target import Target, SSHTarget, FTPTarget 
+from kaseki.brutemanager.bruteforcemanager import SSHBruteForceManager

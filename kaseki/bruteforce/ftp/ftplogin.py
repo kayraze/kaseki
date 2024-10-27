@@ -1,16 +1,15 @@
 import ftplib
-from kaseki.brutemanager.target import FTPTarget
-from kaseki.utils.queuecontent import Signal, QueueData
+import multiprocessing as mp
+import queue as q
+from typing import Union, Optional
 
-import ftplib
-from kaseki.brutemanager.target import FTPTarget
+from kaseki.bruteforce.target import Target, FTPTarget
 from kaseki.utils.queuecontent import Signal, QueueData
 
 class FTPLogin:
     
-    def __init__(self, hostname: str, username: str, password: str, results_queue, max_attempts: int = 0):
-        self.hostname = hostname
-        self.username = username
+    def __init__(self, target: Target, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 100):
+        self.target = target
         self.password = password
         self.results_queue = results_queue
         self.max_attempts = max_attempts
@@ -24,10 +23,10 @@ class FTPLogin:
         while not self.stop_flag:
             try:
                 # Connect to the FTP server
-                self.ftps.connect(self.hostname)
+                self.ftps.connect(self.target.hostname)
 
                 # Log in to the server
-                self.ftps.login(user=self.username, passwd=self.password)
+                self.ftps.login(user=self.target.username, passwd=self.password)
                 result = Signal.Success
                 break  # Exit the loop on successful login
 

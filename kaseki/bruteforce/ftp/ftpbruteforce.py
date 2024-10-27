@@ -6,11 +6,11 @@ import threading as td
 from time import sleep
 from termcolor import cprint
 
-from  kaseki.bruteforce.ssh.sshlogin import SSHLogin
+from  kaseki.bruteforce.ftp.ftplogin import FTPLogin
 from kaseki.utils.queuecontent import Signal, QueueData
-from kaseki.bruteforce.target import Target, SSHTarget
+from kaseki.bruteforce.target import Target, FTPTarget
 
-class SSHBruteForcer:
+class FTPBruteForcer:
     
     
     def __init__(
@@ -48,13 +48,13 @@ class SSHBruteForcer:
             
             password = queuedata.content
             
-            ssh_login : SSHLogin = SSHLogin(
+            ftp_login : FTPLogin = FTPLogin(
                 self.target,
                 password,
                 self.results_queue,
                 self.max_attempts
             )
-            ssh_login.start()
+            ftp_login.start()
     
     def threaded_bruteforce(self) -> None:
         
@@ -74,19 +74,19 @@ class SSHBruteForcer:
                     self.semaphore.acquire()
                     if self.stop_flag:
                         break
-                    ssh_login : SSHLogin = SSHLogin(
+                    ftp_login : FTPLogin = FTPLogin(
                         self.target,
                         password,
                         self.results_queue,
                         self.max_attempts
                     )
-                    future = executor.submit(self.run_login, ssh_login)
+                    future = executor.submit(self.run_login, ftp_login)
                     self.futures.append(future)
 
                         
             self.wait_for_threads()
         except Exception as e:
-            cprint(f"[ERROR] SSHBruteForcer: {e}", "red", attrs=["bold"])
+            cprint(f"[ERROR] FTPBruteForcer: {e}", "red", attrs=["bold"])
                     
                     
     def wait_for_threads(self) -> None:
@@ -96,11 +96,11 @@ class SSHBruteForcer:
             except Exception as e:
                 print(f"Error while waiting for future: {e}")
                 
-    def run_login(self, ssh_login):
-        """Wrapper function to run SSH login and release semaphore."""
+    def run_login(self, ftp_login):
+        """Wrapper function to run ftp login and release semaphore."""
         try:
             if not self.stop_flag:
-                ssh_login.start()  # Run the login attempt
+                ftp_login.start()  # Run the login attempt
         finally:
             self.semaphore.release()  # Ensure the semaphore is released after running
 
