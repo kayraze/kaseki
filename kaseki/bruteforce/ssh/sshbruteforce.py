@@ -5,6 +5,7 @@ import paramiko
 from termcolor import cprint
 import queue
 
+from kaseki.brutemanager.target import SSHTarget
 from kaseki.utils import queuecontent
 
 DEFAULT_PORT: int = 22
@@ -28,30 +29,7 @@ class SSHLoginThreadInfo:
         self.thread_obj: threading.Thread = thread_obj
 
 
-class SSHTarget:
-    """
-    Represents the details of the target SSH server for brute-force attempts.
 
-    Attributes:
-        hostname (str): The hostname or IP address of the SSH server.
-        port (int): The port number for SSH, defaults to 22.
-        username (Optional[str]): The username for SSH login.
-        verbose (bool): Controls detailed logging output.
-    """
-
-    def __init__(self, hostname: str = "localhost", port: int = DEFAULT_PORT, username: Optional[str] = None, verbose: bool = False):
-        """Initialize the SSHTarget with hostname, port, and optional username.
-
-        Args:
-            hostname (str): SSH server hostname or IP.
-            port (int): Port number for SSH.
-            username (Optional[str]): Username for login, if specified.
-            verbose (bool): Enable or disable verbose logging.
-        """
-        self.hostname = hostname
-        self.port = port
-        self.username = username
-        self.verbose = verbose
 
 
 class SSHBruteForcer:
