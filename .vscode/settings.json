@@ -1,0 +1,13 @@
+{
+    // "python.autoComplete.extraPaths": [
+    //     "/home/bbop/Desktop/Do Not Touch/program/python/kaseki/pyvenv",
+    //     "/home/bbop/Desktop/Do Not Touch/program/python/kaseki/pyvenv/",
+    //     "/home/bbop/Desktop/Do Not Touch/program/python/kaseki/pyvenv/lib",
+    //     "/home/bbop/Desktop/Do Not Touch/program/python/kaseki/pyvenv/bin",
+    //     "/home/bbop/.local/lib/python3.10/site-packages",
+    // ],
+
+    // "python.analysis.diagnosticSeverityOverrides": {
+    //     "reportMissingImports": "none"
+    // }
+}
