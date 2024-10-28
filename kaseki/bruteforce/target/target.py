@@ -23,10 +23,5 @@ class Target:
         self.verbose = verbose
         
         
-class SSHTarget(Target):
-    
-    pass
 
-class FTPTarget(Target):
-    
-    pass
+__all__ = ['Target']

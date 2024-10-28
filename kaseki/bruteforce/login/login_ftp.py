@@ -1,14 +1,15 @@
 import ftplib
 import multiprocessing as mp
 import queue as q
-from typing import Union, Optional
+from typing import Union
 
-from kaseki.bruteforce.target import Target, FTPTarget
-from kaseki.utils.queuecontent import Signal, QueueData
+from kaseki.bruteforce.login import Login
+from kaseki.bruteforce.target import FTPTarget
+from kaseki.utils import Signal, QueueData
 
-class FTPLogin:
+class FTPLogin(Login):
     
-    def __init__(self, target: Target, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 100):
+    def __init__(self, target: FTPTarget, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 100):
         self.target = target
         self.password = password
         self.results_queue = results_queue
@@ -62,3 +63,6 @@ class FTPLogin:
     def stop(self):
         """Stop the login attempts."""
         self.stop_flag = True
+
+
+__all__ = ['FTPLogin']

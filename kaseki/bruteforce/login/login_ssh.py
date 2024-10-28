@@ -5,12 +5,13 @@ import queue as q
 from termcolor import cprint
 from time import sleep
 
-from kaseki.bruteforce.target import SSHTarget, Target
-from kaseki.utils.queuecontent import Signal, QueueData
+from kaseki.bruteforce.login import Login
+from kaseki.bruteforce.target import SSHTarget
+from kaseki.utils import Signal, QueueData
 
-class SSHLogin:
+class SSHLogin(Login):
     
-    def __init__(self, target: Target, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 10):
+    def __init__(self, target: SSHTarget, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 10):
         self.target = target
         self.password = password
         self.results_queue = results_queue
@@ -63,3 +64,6 @@ class SSHLogin:
                     
     def stop(self) -> None:
         self.stop_flag = True
+
+
+__all__ = ['SSHLogin']

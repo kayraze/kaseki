@@ -1,11 +1,12 @@
 import queue
-import multiprocessing
+import multiprocessing as mp
 from typing import Union, Callable, Optional, Any
 import time
-from termcolor import cprint  # type: ignore
+from termcolor import cprint
 
 from . import producer
 from . import queuecontent
+from .queuecontent import QueueData, Signal
 
 class QueueConsumer:
     """
@@ -15,8 +16,8 @@ class QueueConsumer:
     If a `stop` signal is received, the consumer halts processing.
 
     Attributes:
-        data_queue (Union[queue.Queue, multiprocessing.Queue]): Queue containing data to be processed.
-        forward_queue (Optional[Union[queue.Queue, multiprocessing.Queue]]): Queue to forward data upon receiving a `forward` signal.
+        data_queue (Union[queue.Queue, mp.Queue]): Queue containing data to be processed.
+        forward_queue (Optional[Union[queue.Queue, mp.Queue]]): Queue to forward data upon receiving a `forward` signal.
         stop_signal (Optional[queuecontent.Signal]): Signal to stop consuming data.
         forward_signal (Optional[queuecontent.Signal]): Signal to forward data to `forward_queue`.
         data_callback (Optional[Callable]): Callback function for processing queue data.
@@ -27,12 +28,12 @@ class QueueConsumer:
     
     def __init__(
             self,
-            data_queue: Union[queue.Queue, multiprocessing.Queue],
-            forward_queue: Optional[Union[queue.Queue, multiprocessing.Queue]] = None,
-            stop_signal: Optional[queuecontent.Signal] = None,
-            forward_signal: Optional[queuecontent.Signal] = None,
-            data_callback: Optional[Callable] = None,
-            forward_callback: Optional[Callable] = None,
+            data_queue: Union[queue.Queue[QueueData], mp.Queue[QueueData]],
+            forward_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
+            stop_signal: Optional[Signal] = None,
+            forward_signal: Optional[Signal] = None,
+            data_callback: Optional[Callable[[QueueData], Signal]] = None,
+            forward_callback: Optional[Callable[[QueueData], Signal]] = None,
             consume_delay: Union[int, float] = 0
         ):
         self.data_queue = data_queue
@@ -50,20 +51,20 @@ class QueueConsumer:
         """
         while not self.stop_flag:
             time.sleep(self.consume_delay)
-            data: queuecontent.QueueData = self.get()
-            if data.signal is queuecontent.Signal.Stop:
+            data: QueueData = self.get()
+            if data.signal is Signal.Stop:
                 self.clear_data_queue()
                 self.stop()
-            elif data.signal is queuecontent.Signal.Forward:
+            elif data.signal is Signal.Forward:
                 self.forward(data)
-            elif data.signal is queuecontent.Signal.Data:
+            elif data.signal is Signal.Data:
                 self.data_callback(data) if self.data_callback else None
 
     def get(
             self, 
             block: bool = True, 
             timeout: Optional[Union[int, float]] = None
-        ) -> queuecontent.QueueData:
+        ) -> QueueData:
         """
         Retrieves data from the `data_queue`.
 
@@ -94,7 +95,7 @@ class QueueConsumer:
 
     def forward(
             self, 
-            data: queuecontent.QueueData,
+            data: QueueData,
             block: bool = True,
             timeout: Optional[Union[int, float]] = None    
         ) -> None:
@@ -109,7 +110,7 @@ class QueueConsumer:
         if self.forward_queue:
             self.forward_queue.put(data, block=block, timeout=timeout)
 
-    def clear_data_queue(self):
+    def clear_data_queue(self) -> None:
         """
         Empties the data queue by retrieving all items.
         """
@@ -119,7 +120,7 @@ class QueueConsumer:
         except queue.Empty:
             pass
 
-    def stop(self):
+    def stop(self) -> None:
         """
         Sets the stop flag to terminate data consumption.
         """
@@ -131,8 +132,8 @@ class PasswordConsumer:
     A specialized consumer for handling passwords in a queue.
 
     Attributes:
-        results_queue (Union[queue.Queue, multiprocessing.Queue]): Queue for processed password data.
-        retry_queue (Optional[Union[queue.Queue, multiprocessing.Queue]]): Queue to hold data for retries.
+        results_queue (Union[queue.Queue, mp.Queue]): Queue for processed password data.
+        retry_queue (Optional[Union[queue.Queue, mp.Queue]]): Queue to hold data for retries.
         success_callback (Optional[Callable]): Callback function for successful passwords.
         retry_callback (Optional[Callable]): Callback for passwords needing retries.
         forward_callback (Optional[Callable]): Callback for forwarded passwords.
@@ -143,13 +144,13 @@ class PasswordConsumer:
 
     def __init__(
         self,
-        results_queue: Union[queue.Queue, multiprocessing.Queue],
-        forward_queue: Optional[Union[queue.Queue, multiprocessing.Queue]] = None,
-        retry_queue: Optional[Union[queue.Queue, multiprocessing.Queue]] = None,
-        failed_callback: Optional[Callable] = None,
-        retry_callback: Optional[Callable] = None,
-        forward_callback: Optional[Callable] = None,
-        success_callback: Optional[Callable] = None,
+        results_queue: Union[queue.Queue[QueueData], mp.Queue[QueueData]],
+        forward_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
+        retry_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
+        failed_callback: Optional[Callable[[QueueData], Signal]] = None,
+        retry_callback: Optional[Callable[[QueueData], Signal]] = None,
+        forward_callback: Optional[Callable[[QueueData], Signal]] = None,
+        success_callback: Optional[Callable[[QueueData], Signal]] = None,
         consume_delay: Union[int, float] = 0,
         verbose: bool = True
     ):
@@ -171,7 +172,7 @@ class PasswordConsumer:
         """
         while not self.stop_flag: 
             queuedata: queuecontent.QueueData = self.results_queue.get()
-            cprint(f"[CONSUMER]: queuedata with signal {queuedata.signal}", "yellow")
+            # cprint(f"[CONSUMER]: queuedata with signal {queuedata.signal}", "yellow")
             if queuedata.signal is queuecontent.Signal.StopConsumer:
                 self.stop()
 
@@ -200,7 +201,7 @@ class PasswordConsumer:
 
         exit()
 
-    def callback_evaluate(self, queuedata, callback):
+    def callback_evaluate(self, queuedata: QueueData, callback: Callable[[QueueData], Signal]) -> None:
         """
         Evaluates callback with `queuedata`, stops consumer if signal is `Finished`.
 
@@ -211,14 +212,14 @@ class PasswordConsumer:
         if callback(queuedata) is queuecontent.Signal.Finished:
             self.terminate()
 
-    def terminate(self):
+    def terminate(self) -> None:
         """
         Drains the queue and stops the consumer.
         """
         self.drain_queue()
         self.stop()
 
-    def drain_queue(self):
+    def drain_queue(self) -> None:
         """
         Empties `results_queue` to stop processing.
         """
@@ -229,7 +230,7 @@ class PasswordConsumer:
             if self.verbose:
                 cprint("[!] Queue is empty.", "red")
 
-    def clear_results_queue(self):
+    def clear_results_queue(self) -> None:
         """
         Clears all items from `results_queue`.
         """
@@ -258,3 +259,4 @@ class PasswordConsumer:
             self.retry_queue.put(queuedata)
 
 
+__all__ = ['PasswordConsumer']

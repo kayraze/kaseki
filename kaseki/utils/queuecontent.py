@@ -70,3 +70,6 @@ class QueueData:
             str: A string in the format "Signal: Content".
         """
         return f"{self.signal}: {self.content}"
+
+
+__all__ = ['Signal', 'QueueData']

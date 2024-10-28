@@ -3,9 +3,9 @@ from termcolor import cprint
 from time import sleep
 import queue
 import multiprocessing
-from typing import Union, Any
+from typing import Union, Any, Generator
 
-from . import queuecontent
+from .queuecontent import QueueData, Signal
 
 
 class PasswordProducer:
@@ -25,7 +25,7 @@ class PasswordProducer:
     def __init__(
             self, 
             password_filename: str, 
-            passwords_queue: Union[queue.Queue, multiprocessing.Queue], 
+            passwords_queue: Union[queue.Queue[QueueData], multiprocessing.Queue[QueueData]], 
             termination_value: Any = None, 
             delay: Union[int, float] = 0,
             verbose: bool = True
@@ -37,7 +37,7 @@ class PasswordProducer:
         self.stop_flag = False
         self.verbose = verbose
 
-    def yield_data(self):
+    def yield_data(self) -> Generator[str, None, None]:
         """
         Yields each line from the file specified by `password_filename`.
 
@@ -51,7 +51,7 @@ class PasswordProducer:
             for line in file:
                 yield line
 
-    def produce(self, delay: Union[int, float] = 0):
+    def produce(self, delay: Union[int, float] = 0) -> None:
         """
         Reads passwords from a file and adds them to the `passwords_queue`.
 
@@ -63,22 +63,22 @@ class PasswordProducer:
         Args:
             delay (Union[int, float]): Optional delay between queuing each password, defaults to 0.
         """
-        passgen = self.yield_data()  # Generator for iterating through passwords
+        passgen: Generator[str, None, None] = self.yield_data()  # Generator for iterating through passwords
         for password in passgen:
             password = password.strip()  # Remove trailing/leading whitespace
             if self.stop_flag:
                 break  # Stop if stop flag is set
 
             # Enqueue password data with a Data signal
-            self.passwords_queue.put(queuecontent.QueueData(
-                queuecontent.Signal.Data,
+            self.passwords_queue.put(QueueData(
+                Signal.Data,
                 password
             ))
             sleep(delay)  # Delay to simulate processing time
 
         # Signal that no passwords are left in the file
-        self.passwords_queue.put(queuecontent.QueueData(
-            queuecontent.Signal.NoPasswordsLeft,
+        self.passwords_queue.put(QueueData(
+            Signal.NoPasswordsLeft,
             None
         ))
 
@@ -95,3 +95,6 @@ class PasswordProducer:
         When `stop_flag` is True, the `produce` method will exit its loop and send a termination signal.
         """
         self.stop_flag = True
+
+
+__all__ = ['PasswordProducer']

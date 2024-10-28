@@ -1,2 +1,10 @@
-from kaseki.bruteforce.target import Target, SSHTarget, FTPTarget 
-from kaseki.brutemanager.bruteforcemanager import SSHBruteForceManager
+from .bruteforce import *
+from .utils import *
+
+from . import bruteforce
+from . import utils
+
+__all__ = [
+    *bruteforce.__all__,
+    *utils.__all__
+]

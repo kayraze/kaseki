@@ -1,23 +1,20 @@
-import argparse
 import multiprocessing
-import paramiko  # SSH interactions
 from time import sleep  # Pauses
-import threading
+import threading as td
 from termcolor import cprint  # Colorized terminal output
-import queue  # Thread-safe data handling
-import sys
-from typing import List, Optional
+from typing import List, Type
 
+from kaseki.bruteforce import BruteForcer
+from kaseki.bruteforce.utils import get_protocol_type_with_target
+from kaseki.bruteforce.protocol import Protocol
 from kaseki.bruteforce.target import Target
-from kaseki.bruteforce.ssh.sshbruteforce import *
+# from kaseki.bruteforce. import *
+
 from kaseki.utils.producer import PasswordProducer
 from kaseki.utils.consumer import PasswordConsumer
 from kaseki.utils import queuecontent
 
-
-
-
-class SSHBruteForceManager:
+class BruteForceManager:
     """
     Manages an SSH brute-force attack by orchestrating password production 
     and result consumption with multiprocessing for performance.
@@ -48,9 +45,9 @@ class SSHBruteForceManager:
         # Stores running brute force processes
         self.running_bruteforce_proc: List[multiprocessing.Process] = []
         self.password_failed_n: int = 0  # Tracks failed password attempts
-
         
-
+        self.protocol: Type[Protocol] = get_protocol_type_with_target(target)
+        
     def success_result_callback(self, queuedata) -> queuecontent.Signal:
         """
         Callback for successful password detection during brute-force attack.
@@ -141,13 +138,13 @@ class SSHBruteForceManager:
             process_n (int): Number of brute-forcer processes to spawn.
         """
         for _ in range(process_n):
-            brute_forcer: SSHBruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
+            brute_forcer: BruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
             brute_forcer_proc = multiprocessing.Process(target=brute_forcer.start)
             brute_forcer_proc.start()
             self.running_bruteforce_proc.append(brute_forcer_proc)
 
         # Waits for all brute-forcer processes to complete
-        cprint(f"[SSHBruteForceManager]: Waiting for bruteforce process to finish","yellow")
+        cprint(f"[BruteForceManager]: Waiting for bruteforce process to finish","yellow")
         self.wait_for_bruteforcer_procs()
 
     def run_single_bruteforcer(self, login_thread_n_each: int = 0) -> None:
@@ -157,10 +154,10 @@ class SSHBruteForceManager:
         Args:
             login_thread_n_each (int): Number of threads for brute-forcing.
         """
-        brute_forcer: SSHBruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
+        brute_forcer: BruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
         brute_forcer.start()
 
-    def create_bruteforcer(self, login_thread_n=0) -> SSHBruteForcer:
+    def create_bruteforcer(self, login_thread_n=0) -> BruteForcer:
         """
         Creates a pre-configured SSHBruteForcer instance.
         
@@ -170,13 +167,25 @@ class SSHBruteForceManager:
         Returns:
             SSHBruteForcer: Configured brute-forcer instance.
         """
-        return SSHBruteForcer(
+
+        bruteforcer_class: Type[BruteForcer] = self.get_bruteforcer_class()        
+        return bruteforcer_class(
             target=self.target,
             passwords_queue=self.passwords_queue,
             results_queue=self.results_queue,
             thread_n=login_thread_n,
+            max_attempts=50
         )
-
+        
+    def get_bruteforcer_class(self) -> Type[BruteForcer]:
+        
+        # if isinstance(self.protocol, SSH):
+        #     return SSHBruteForcer
+        # elif isinstance(self.protocol, FTP):
+        #     return FTPBruteForcer
+        return BruteForcer
+    
+    
     def wait_for_bruteforcer_procs(self) -> None:
         """
         Waits for all running brute-forcer processes to complete.
@@ -188,3 +197,7 @@ class SSHBruteForceManager:
             except Exception as e:
                 cprint(f"[SSHBruteForceManager] Error: {e}", "red")
         cprint(f"[SSHBruteForceManager]: Done waiting for bruteforcers", "cyan")
+        
+        
+        
+__all__ = ['BruteForceManager']
