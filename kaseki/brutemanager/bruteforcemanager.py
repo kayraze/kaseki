@@ -74,8 +74,8 @@ class SSHBruteForceManager:
         Returns:
             queuecontent.Signal: Signal to guide PasswordResultConsumer actions.
         """
-        cprint(f"[{self.password_failed_n}] not the password {queuedata.content}", "red")
         self.password_failed_n += 1
+        cprint(f"[{self.password_failed_n}] not the password {queuedata.content}", "red")
         return queuecontent.Signal.Blank
 
     def start_password_producer(self) -> None:
@@ -93,6 +93,7 @@ class SSHBruteForceManager:
         self.password_result_consumer = PasswordConsumer(
             self.results_queue,
             self.passwords_queue,
+            retry_queue=self.passwords_queue,
             success_callback=self.success_result_callback,
             failed_callback=self.failed_result_callback
         )
@@ -142,9 +143,11 @@ class SSHBruteForceManager:
         for _ in range(process_n):
             brute_forcer: SSHBruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
             brute_forcer_proc = multiprocessing.Process(target=brute_forcer.start)
+            brute_forcer_proc.start()
             self.running_bruteforce_proc.append(brute_forcer_proc)
 
         # Waits for all brute-forcer processes to complete
+        cprint(f"[SSHBruteForceManager]: Waiting for bruteforce process to finish","yellow")
         self.wait_for_bruteforcer_procs()
 
     def run_single_bruteforcer(self, login_thread_n_each: int = 0) -> None:
@@ -179,4 +182,9 @@ class SSHBruteForceManager:
         Waits for all running brute-forcer processes to complete.
         """
         for bruteforcer_proc in self.running_bruteforce_proc:
-            bruteforcer_proc.join()
+            try:
+                bruteforcer_proc.join()
+                cprint(f"[SSHBruteForceManager]: bruteforce_proc finished", "cyan")
+            except Exception as e:
+                cprint(f"[SSHBruteForceManager] Error: {e}", "red")
+        cprint(f"[SSHBruteForceManager]: Done waiting for bruteforcers", "cyan")

@@ -151,7 +151,7 @@ class PasswordConsumer:
         forward_callback: Optional[Callable] = None,
         success_callback: Optional[Callable] = None,
         consume_delay: Union[int, float] = 0,
-        verbose: bool = False
+        verbose: bool = True
     ):
         self.results_queue = results_queue
         self.retry_queue = retry_queue
@@ -171,7 +171,7 @@ class PasswordConsumer:
         """
         while not self.stop_flag: 
             queuedata: queuecontent.QueueData = self.results_queue.get()
-
+            cprint(f"[CONSUMER]: queuedata with signal {queuedata.signal}", "yellow")
             if queuedata.signal is queuecontent.Signal.StopConsumer:
                 self.stop()
 
@@ -189,8 +189,7 @@ class PasswordConsumer:
                     self.retry_callback(queuedata)
 
             elif queuedata.signal is queuecontent.Signal.Forward:
-                if self.forward_queue:
-                    self.forward_queue.put(queuedata)
+                self.forward_queue.put(queuedata) if self.forward_queue else None
                 if self.forward_callback:
                     self.callback_evaluate(queuedata, self.forward_callback)
 

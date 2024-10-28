@@ -66,10 +66,8 @@ class FTPBruteForcer:
                     if signal is Signal.NoPasswordsLeft or signal is Signal.Success:
                         self.passwords_queue.put(signal)
                         break
-                    
-                    
+                        
                     password = queuedata.content
-                    
                 
                     self.semaphore.acquire()
                     if self.stop_flag:

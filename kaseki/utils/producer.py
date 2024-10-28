@@ -28,7 +28,7 @@ class PasswordProducer:
             passwords_queue: Union[queue.Queue, multiprocessing.Queue], 
             termination_value: Any = None, 
             delay: Union[int, float] = 0,
-            verbose: bool = False
+            verbose: bool = True
         ):
         self.password_filename = password_filename
         self.passwords_queue = passwords_queue
