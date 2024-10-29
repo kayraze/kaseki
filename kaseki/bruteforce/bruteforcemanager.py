@@ -1,18 +1,17 @@
-import multiprocessing
+import multiprocessing as mp
 from time import sleep  # Pauses
 import threading as td
-from termcolor import cprint  # Colorized terminal output
+from termcolor import cprint  # Colorized terminal output``
 from typing import List, Type
 
-from kaseki.bruteforce import BruteForcer
-from kaseki.bruteforce.utils import get_protocol_type_with_target
+from .bruteforcer import BruteForcer
 from kaseki.bruteforce.protocol import Protocol
 from kaseki.bruteforce.target import Target
 # from kaseki.bruteforce. import *
 
 from kaseki.utils.producer import PasswordProducer
 from kaseki.utils.consumer import PasswordConsumer
-from kaseki.utils import queuecontent
+from kaseki.utils import QueueData, Signal, ConcurrentQueue
 
 class BruteForceManager:
     """
@@ -27,7 +26,7 @@ class BruteForceManager:
         password_failed_n (int): Counter for failed password attempts.
     """
 
-    def __init__(self, target: Target, passlist_filename: str):
+    def __init__(self, target: Target, passlist_filename: str, verbose:bool = False):
         """
         Initializes the brute force manager with SSH target details and password list path.
         
@@ -39,16 +38,17 @@ class BruteForceManager:
         self.passlist_filename = passlist_filename  # Password list file path
 
         # Queues for password production and result handling
-        self.passwords_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self.results_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self.passwords_queue: ConcurrentQueue = mp.Queue()
+        self.results_queue: ConcurrentQueue = mp.Queue()
 
         # Stores running brute force processes
-        self.running_bruteforce_proc: List[multiprocessing.Process] = []
+        self.running_bruteforce_proc: List[mp.Process] = []
         self.password_failed_n: int = 0  # Tracks failed password attempts
         
-        self.protocol: Type[Protocol] = get_protocol_type_with_target(target)
+        self.protocol: Protocol = target.protocol
+        self.verbose = verbose
         
-    def success_result_callback(self, queuedata) -> queuecontent.Signal:
+    def success_result_callback(self, queuedata: QueueData) -> Signal:
         """
         Callback for successful password detection during brute-force attack.
         
@@ -59,9 +59,9 @@ class BruteForceManager:
             queuecontent.Signal: Signal to guide PasswordResultConsumer actions.
         """
         cprint(f"\n[+] Found the password {queuedata.content}", "green", attrs=["bold"])
-        return queuecontent.Signal.Finished
+        return Signal.Finished
 
-    def failed_result_callback(self, queuedata) -> queuecontent.Signal:
+    def failed_result_callback(self, queuedata: QueueData) -> Signal:
         """
         Callback for failed password attempt during brute-force attack.
         
@@ -73,14 +73,14 @@ class BruteForceManager:
         """
         self.password_failed_n += 1
         cprint(f"[{self.password_failed_n}] not the password {queuedata.content}", "red")
-        return queuecontent.Signal.Blank
+        return Signal.Blank
 
     def start_password_producer(self) -> None:
         """
         Initializes and starts the PasswordProducer in a separate process.
         """
         self.password_producer = PasswordProducer(self.passlist_filename, self.passwords_queue)
-        self._password_producer_proc = multiprocessing.Process(target=self.password_producer.produce)
+        self._password_producer_proc = mp.Process(target=self.password_producer.produce)
         self._password_producer_proc.start()
 
     def start_password_result_consumer(self) -> None:
@@ -94,7 +94,7 @@ class BruteForceManager:
             success_callback=self.success_result_callback,
             failed_callback=self.failed_result_callback
         )
-        self._password_result_consumer_proc = multiprocessing.Process(target=self.password_result_consumer.consume)
+        self._password_result_consumer_proc = mp.Process(target=self.password_result_consumer.consume)
         self._password_result_consumer_proc.start()
 
     def start(self, login_thread_n_each: int = 0, process_n: int = 0) -> None:
@@ -107,14 +107,21 @@ class BruteForceManager:
         """
         self.start_password_producer()
         self.start_password_result_consumer()
-        self.run_bruteforcers(login_thread_n_each, process_n)
-        
+        try:
+            self.run_bruteforcers(login_thread_n_each, process_n)
+        except KeyboardInterrupt:
+            cprint(f"[!] Killing all bruteforcers", "red", attrs=["bold"])
+            self.kill_all_bruteforcers()
+        finally:
         # Stops producer and consumer processes after brute-forcing completes
-        cprint(f"[SSHBruteForceManager]: Stopping password_producer and result_consumer", "yellow", attrs=["bold"])
-        self.password_producer.stop()
-        self._password_producer_proc.kill()
-        self.password_result_consumer.stop()
-        self._password_result_consumer_proc.kill()
+            if self.verbose:
+                cprint(f"[SSHBruteForceManager]: Stopping password_producer and result_consumer", "yellow", attrs=["bold"])
+                
+                self.password_producer.stop()
+                self._password_producer_proc.kill()
+                self.password_result_consumer.stop()
+                self._password_result_consumer_proc.kill()
+            
 
     def run_bruteforcers(self, login_thread_n_each: int = 0, process_n: int = 0) -> None:
         """
@@ -139,12 +146,14 @@ class BruteForceManager:
         """
         for _ in range(process_n):
             brute_forcer: BruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
-            brute_forcer_proc = multiprocessing.Process(target=brute_forcer.start)
+            brute_forcer_proc = mp.Process(target=brute_forcer.start)
             brute_forcer_proc.start()
             self.running_bruteforce_proc.append(brute_forcer_proc)
 
         # Waits for all brute-forcer processes to complete
-        cprint(f"[BruteForceManager]: Waiting for bruteforce process to finish","yellow")
+        if self.verbose:
+            cprint(f"[BruteForceManager]: Waiting for bruteforce process to finish","yellow")
+        
         self.wait_for_bruteforcer_procs()
 
     def run_single_bruteforcer(self, login_thread_n_each: int = 0) -> None:
@@ -157,7 +166,15 @@ class BruteForceManager:
         brute_forcer: BruteForcer = self.create_bruteforcer(login_thread_n=login_thread_n_each)
         brute_forcer.start()
 
-    def create_bruteforcer(self, login_thread_n=0) -> BruteForcer:
+    def kill_all_bruteforcers(self):
+        for bruteforcer_proc in self.running_bruteforce_proc:
+            bruteforcer_proc.kill()
+
+    # def stop_all_bruteforcers(self):
+    #     for bruteforcer_proc in self.running_bruteforce_proc:
+    #         bruteforcer_proc
+
+    def create_bruteforcer(self, login_thread_n:int=0) -> BruteForcer:
         """
         Creates a pre-configured SSHBruteForcer instance.
         
@@ -168,22 +185,12 @@ class BruteForceManager:
             SSHBruteForcer: Configured brute-forcer instance.
         """
 
-        bruteforcer_class: Type[BruteForcer] = self.get_bruteforcer_class()        
-        return bruteforcer_class(
+        return BruteForcer(
             target=self.target,
             passwords_queue=self.passwords_queue,
             results_queue=self.results_queue,
             thread_n=login_thread_n,
-            max_attempts=50
         )
-        
-    def get_bruteforcer_class(self) -> Type[BruteForcer]:
-        
-        # if isinstance(self.protocol, SSH):
-        #     return SSHBruteForcer
-        # elif isinstance(self.protocol, FTP):
-        #     return FTPBruteForcer
-        return BruteForcer
     
     
     def wait_for_bruteforcer_procs(self) -> None:
@@ -193,10 +200,13 @@ class BruteForceManager:
         for bruteforcer_proc in self.running_bruteforce_proc:
             try:
                 bruteforcer_proc.join()
-                cprint(f"[SSHBruteForceManager]: bruteforce_proc finished", "cyan")
+                if self.verbose:
+                    cprint(f"[SSHBruteForceManager]: bruteforce_proc finished", "cyan")
             except Exception as e:
                 cprint(f"[SSHBruteForceManager] Error: {e}", "red")
-        cprint(f"[SSHBruteForceManager]: Done waiting for bruteforcers", "cyan")
+        
+        if self.verbose:
+            cprint(f"[SSHBruteForceManager]: Done waiting for bruteforcers", "cyan")
         
         
         

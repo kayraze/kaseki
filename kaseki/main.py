@@ -3,11 +3,10 @@ import sys
 from termcolor import cprint
 from typing import Type, Optional
 
-from kaseki.bruteforce.target import Target, SSHTarget, FTPTarget 
-from kaseki.bruteforce.protocol import Protocol, SSH, FTP
+from .bruteforce.target import Target, SSHTarget, FTPTarget 
+from .bruteforce.protocol import Protocol, SSH, FTP
 
-from kaseki.bruteforce.utils import get_protocol_type_with_target
-from kaseki.bruteforce import BruteForceManager
+from .bruteforce import BruteForceManager
 
 def get_target_type_with_str(protocol_str: str) -> Optional[Type[Target]]:
     cprint(f"{protocol_str.lower()} == ssh: {protocol_str.lower() == 'ssh'}", "cyan")
@@ -17,16 +16,16 @@ def get_target_type_with_str(protocol_str: str) -> Optional[Type[Target]]:
         return FTPTarget
     return None
 
-def get_default_port_with_protocol(protocol: Type[Protocol]) -> Optional[int]:
-    if issubclass(protocol, SSH):
-        return 22
-    elif issubclass(protocol, FTP):
-        return 21
-    return None
+# def get_default_port_with_protocol(protocol: Type[Protocol]) -> Optional[int]:
+#     if issubclass(protocol, SSH):
+#         return 22
+#     elif issubclass(protocol, FTP):
+#         return 21
+#     return None
 
 SUPPORTED_PROTOCOL_STRING_ARGS=["ssh", "ftp"]
 
-def main():
+def main() -> None:
 
     # This error file will redirect error stream/output to the file if debug not set
     # This was made due to paramiko ssh connect making uncatchable EOF & Banner Error exceptions
@@ -69,14 +68,13 @@ def main():
 
     target_type: Optional[Type[Target]] = get_target_type_with_str(protocol_str)
 
-    protocol: Type[Protocol] = get_protocol_type_with_target(target_type())
+    # protocol: Type[Protocol] = get_protocol_type_with_target(target_type())
 
     hostname: str = args.hostname
-    port: int = int(args.port) if args.port else get_default_port_with_protocol(protocol)
+    port: Optional[int] = int(args.port) if args.port else None
     username: str = args.username
     cprint(f"port = {port}", "cyan")
-    # print(issubclass(target_type, Target))
-    if not issubclass(target_type, Target) or not port:
+    if not target_type or not issubclass(target_type, Target) or not port:
         cprint(f"[!] Invalid protocol: {protocol_str}", "red", attrs=["bold"])
         cprint(f"[!] Select supported protocols in {SUPPORTED_PROTOCOL_STRING_ARGS}")
         return
@@ -92,14 +90,15 @@ def main():
     # Create SSH target object
     target = target_type(
         hostname=hostname, 
-        port=port, 
-        username=username
+        username=username,
+        port=port
     )
 
     # This will manage our bruteforcers, password producer, and result consumer
     brute_forcer = BruteForceManager(
         target, 
-        passlist
+        passlist,
+        verbose=verbose
     )
 
     # Initialize/starts our producers and consumers and then the bruteforcers
@@ -113,4 +112,4 @@ if __name__ == "__main__":
     main()
 
 
-__all__: list = []
+__all__: list[str] = ['get_target_type_with_str']

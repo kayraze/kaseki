@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 import enum
-from typing import Any
+from typing import Any, Generic, TypeAlias, Union, TypeVar, Optional, cast, Type
+import multiprocessing as mp
+import  queue as q
+
 
 class Signal(enum.Enum):
     """
@@ -70,6 +75,15 @@ class QueueData:
             str: A string in the format "Signal: Content".
         """
         return f"{self.signal}: {self.content}"
+    
 
 
-__all__ = ['Signal', 'QueueData']
+DataQueue = Type["q.Queue[QueueData]"]
+MPDataQueue = Type["mp.Queue[QueueData]"]
+
+# You can define a type alias for easier use
+ConcurrentQueue = Union["q.Queue[QueueData]", "mp.Queue[QueueData]"]
+# ConcurrentQueue = Union[DataQueue, MPDataQueue]
+
+
+__all__ = ['Signal', 'QueueData', 'ConcurrentQueue']

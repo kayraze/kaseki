@@ -3,9 +3,9 @@ from typing import Union, Type
 import queue as q
 import multiprocessing as mp
 
-from kaseki.bruteforce.target import Target, SSHTarget, FTPTarget
 from kaseki.bruteforce.protocol import Protocol, SSH, FTP
 from kaseki.bruteforce.login import Login, SSHLogin, FTPLogin
+from kaseki.bruteforce.target import Target, SSHTarget, FTPTarget
 
     
 def get_login_type_with_target(target: Target) -> Type[Login]:
@@ -23,7 +23,4 @@ def get_login_type_with_protocol(protocol: Protocol) -> Type[Login]:
     return Login
 
 
-__all__ = [
-    'get_login_type_with_protocol',
-    'get_login_type_with_target'    
-]
+__all__ = ['get_login_type_with_target', 'get_login_type_with_protocol']

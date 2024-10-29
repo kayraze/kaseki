@@ -5,61 +5,52 @@ import queue as q
 from termcolor import cprint
 from time import sleep
 
+from kaseki.bruteforce.protocol import Protocol
 from kaseki.bruteforce.login import Login
 from kaseki.bruteforce.target import SSHTarget
-from kaseki.utils import Signal, QueueData
+from kaseki.utils import Signal, QueueData, ConcurrentQueue
 
 class SSHLogin(Login):
     
-    def __init__(self, target: SSHTarget, password: str, results_queue: Union[q.Queue, mp.Queue], max_attempts: int = 10):
+    def __init__(self, target: SSHTarget, password: str, results_queue: ConcurrentQueue):
         self.target = target
         self.password = password
         self.results_queue = results_queue
-        self.max_attempts = max_attempts
         self.stop_flag = False
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     def start(self) -> None:
-        attempts = 0
-        result = QueueData(Signal.Blank, None)
+        result: Signal = Signal.Blank
         
         while not self.stop_flag:
             try:
                 self.client.connect(
                     hostname=self.target.hostname,
-                    port=self.target.port,
+                    port=self.target.protocol.port,
                     username=self.target.username,
                     password=self.password,
                     timeout=10
                 )
-                result = QueueData(Signal.Success, self.password)
-                # cprint(f"[+] Successful login with password: {self.password}", "cyan")
+                result = Signal.Success
                 break
             
             except paramiko.ssh_exception.AuthenticationException:
-                result = QueueData(Signal.Failed, self.password)
-                # cprint(f"[-] Authentication failed for password: {self.password}", "red")
+                result = Signal.Failed
                 break
             
             except paramiko.ssh_exception.SSHException as e:
-                attempts += 1
-                # cprint(f"[SSHLogin] Attempting again with password {self.password} (Attempt {attempts}/{self.max_attempts})", "cyan")
-                
-                if attempts >= self.max_attempts:
-                    # cprint(f"[+] Maximum attempts reached for password {self.password}. Sending retry signal.", "cyan")
-                    result = QueueData(Signal.Retry, self.password)
-                    break
-                
-                sleep(1)  # Wait before retrying
-
-        # Ensure client is closed in any case
+                sleep(1)
+                continue
         try:
             self.client.close()
         except Exception as e:
             cprint(f"[ERROR] Failed to close SSH client: {e}", "red")
         
-        self.results_queue.put(result)
+        self.results_queue.put(QueueData(
+            result,
+            self.password
+        ))
         return
                     
     def stop(self) -> None:

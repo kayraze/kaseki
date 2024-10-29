@@ -4,28 +4,36 @@ import queue as q
 import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, Future
 import threading as td
+from time import sleep
 
-from .utils import  get_protocol_type_with_target, get_login_type_with_target
-from kaseki.bruteforce.login import Login
-from .target import Target
-from kaseki.bruteforce.protocol import Protocol
-from kaseki.utils import QueueData, Signal
+from .target import Target, SSHTarget,FTPTarget
+from .login import Login, SSHLogin, FTPLogin
+from .protocol import Protocol
+from kaseki.utils import QueueData, Signal, ConcurrentQueue
+# from kaseki.bruteforce.bruteforceutils.utils_login import get_login_type_with_target
+
+def get_login_type_with_target(target: Target) -> Type[Login]:
+    if isinstance(target, SSHTarget):
+        return SSHLogin
+    elif isinstance(target, FTPTarget):
+        return FTPLogin
+    return Login
 
 class BruteForcer:
     
     def __init__(
         self, 
         target: Target,
-        passwords_queue: Union[q.Queue[QueueData], mp.Queue[QueueData]], 
-        results_queue: Union[q.Queue[QueueData], mp.Queue[QueueData]],
+        passwords_queue: ConcurrentQueue, 
+        results_queue: ConcurrentQueue,
         thread_n: int=0, 
-        max_attempts:int=10,
+        verbose:bool = False
     ):
         self.target = target
         self.passwords_queue = passwords_queue
         self.results_queue = results_queue
         self.thread_n = thread_n
-        self.max_attempts = max_attempts
+        self.verbose = verbose
         
         self.stop_flag: bool = False
         self.futures: List[Future[None]] = []
@@ -33,7 +41,7 @@ class BruteForcer:
         self.running_n: int = 0
         self.thread_lock: td.Lock = td.Lock()
         
-        self.protocol: Type[Protocol] = get_protocol_type_with_target(target)
+        self.protocol: Protocol = target.protocol
         self.login: Type[Login] = get_login_type_with_target(target)
         
         
@@ -55,7 +63,8 @@ class BruteForcer:
             signal: Signal = queuedata.signal
             
             if signal is Signal.NoPasswordsLeft or signal is Signal.Success:
-                cprint(f"[*] Recieved NoPasswordsLeft or Success", "magenta")
+                if self.verbose:
+                    cprint(f"[*] Recieved NoPasswordsLeft or Success", "magenta")
                 self.passwords_queue.put(queuedata)
                 break  
             
@@ -73,7 +82,8 @@ class BruteForcer:
                     signal: Signal = queuedata.signal
                     # cprint(f"[PASSWORDS_QUEUE_LEN]: {self.passwords_queue.qsize()}", "green")
                     if signal is Signal.NoPasswordsLeft or signal is Signal.Success:
-                        cprint(f"[*] Recieved NoPasswordsLeft or Success", "magenta")
+                        if self.verbose:
+                            cprint(f"[*] Recieved NoPasswordsLeft or Success", "magenta")
                         self.passwords_queue.put(queuedata)
                         break  
                     password = queuedata.content
@@ -88,23 +98,24 @@ class BruteForcer:
                     login: Login = self.create_login(password)
                     future: Future[None] = executor.submit(self.run_login, login)
                     self.futures.append(future)
+                    sleep(0.1)
                     
-        except Exception as e:
-            cprint(f"[ERROR]    BruteForcer: {e}", "red", attrs=["bold"])
+        except KeyboardInterrupt:
+            cprint(f"[!] Killing all bruteforcers", "red", attrs=["bold"])
         finally:
-            cprint(f"[TERMINATING]  BruteForcer", "cyan")
+            if self.verbose:
+                cprint(f"[TERMINATING]  BruteForcer", "cyan")
             self.wait_for_threads()
             return
 
-    def create_login(self, password) -> Login:
+    def create_login(self, password: str) -> Login:
         return self.login(
             target=self.target,
             password=password,
             results_queue=self.results_queue,
-            max_attempts=20
         )        
                     
-    def run_login(self, login) -> None:
+    def run_login(self, login: Login) -> None:
         """Wrapper function to run login and release semaphore."""
         try:
             if not self.stop_flag:
@@ -125,15 +136,27 @@ class BruteForcer:
         self.wait_for_threads()
         
     def wait_for_threads(self) -> None:
-        cprint(f"[*] Running threads {self.running_n}", "green")
-        cprint(f"[*] Waiting for {len(self.futures)} threads to finished", "green")
+        if self.verbose:
+            cprint(f"[*] Running threads {self.running_n}", "green")
+        if self.verbose:
+            cprint(f"[*] Waiting for {len(self.futures)} threads to finished", "green")
         
         for future in list(self.futures):
             try:
-                future.result(timeout=3)  # This will block until the future is done
+                future.result(timeout=0.1)  # This will block until the future is done
             except Exception as e:
-                print(f"Error while waiting for future: {e}")
-        cprint(f"[*] Done Waiting", "blue")
+                pass
+        if self.verbose:
+            cprint(f"[*] Done Waiting", "blue")
+        
+    def __len__(self) -> int:
+        return self.thread_n
+    
+    def __repr__(self) -> str:
+        return repr(self)
+    
+    def __str__(self) -> str:
+        return f"{str(self.protocol).upper()}BruteForcer"
 
 
 __all__ = ['BruteForcer']

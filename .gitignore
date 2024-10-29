@@ -1,6 +1,6 @@
 others/
 pyvenv/
-
+docs/
 
 __pycache__/
 .mypy_cache/

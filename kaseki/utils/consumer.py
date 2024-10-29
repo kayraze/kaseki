@@ -6,7 +6,7 @@ from termcolor import cprint
 
 from . import producer
 from . import queuecontent
-from .queuecontent import QueueData, Signal
+from .queuecontent import QueueData, Signal, ConcurrentQueue
 
 class QueueConsumer:
     """
@@ -28,8 +28,8 @@ class QueueConsumer:
     
     def __init__(
             self,
-            data_queue: Union[queue.Queue[QueueData], mp.Queue[QueueData]],
-            forward_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
+            data_queue: ConcurrentQueue,
+            forward_queue: Optional[ConcurrentQueue] = None,
             stop_signal: Optional[Signal] = None,
             forward_signal: Optional[Signal] = None,
             data_callback: Optional[Callable[[QueueData], Signal]] = None,
@@ -144,15 +144,15 @@ class PasswordConsumer:
 
     def __init__(
         self,
-        results_queue: Union[queue.Queue[QueueData], mp.Queue[QueueData]],
-        forward_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
-        retry_queue: Optional[Union[queue.Queue[QueueData], mp.Queue[QueueData]]] = None,
+        results_queue: ConcurrentQueue,
+        forward_queue: Optional[ConcurrentQueue] = None,
+        retry_queue: Optional[ConcurrentQueue] = None,
         failed_callback: Optional[Callable[[QueueData], Signal]] = None,
         retry_callback: Optional[Callable[[QueueData], Signal]] = None,
         forward_callback: Optional[Callable[[QueueData], Signal]] = None,
         success_callback: Optional[Callable[[QueueData], Signal]] = None,
         consume_delay: Union[int, float] = 0,
-        verbose: bool = True
+        verbose: bool = False
     ):
         self.results_queue = results_queue
         self.retry_queue = retry_queue

@@ -1,7 +1,11 @@
-from .protocol import Protocol
+from . import TCP
 
-class FTP(Protocol):
+class FTP(TCP):
     
-    pass
+    def __init__(self, port:int=21):
+        super().__init__(port)
+    
+    def __str__(self) -> str:
+        return "FTP"
 
 __all__ = ['FTP']

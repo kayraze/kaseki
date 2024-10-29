@@ -1,10 +1,10 @@
-from .consumer import *
-from .producer import *
 from .queuecontent import *
+from .producer import *
+from .consumer import *
 
+from . import queuecontent
 from . import consumer
 from . import producer
-from . import queuecontent
 
 __all__ = [
     *consumer.__all__,
