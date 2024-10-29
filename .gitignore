@@ -1,14 +1,14 @@
-*.txt
-*.log
-__pycache__/
-.mypy_cache/
 others/
 pyvenv/
-
+docs/
 
 __pycache__/
+.mypy_cache/
 *.pyc
 *.pyo
 *.egg-info/
 build/
 dist/
+tests/
+mypy.ini
+.vscode/
