@@ -29,20 +29,22 @@ kaseki [-h] --username USERNAME --passlist PASSLIST [--threads THREADS] [--proce
 
 ### Arguments
 
-<hostname>: The hostname or IP address of the SSH server (default is localhost).
--u, --username: The username for SSH login (optional).
--P, --passlist: The file containing the list of passwords (optional).
--t, --threads: Number of threads to use (default is 10).
---proc: Number of processes to use (default is 0, which means no multiprocessing).
--p, --port: The SSH port (default is 22).
--d, --debug: Enable error outputs for debugging.
--v, --verbose: Enable logging outputs
+- <hostname>: The hostname or IP address of the SSH server (default is localhost).
+- -u, --username: The username for SSH login (optional).
+- -P, --passlist: The file containing the list of passwords (optional).
+- -t, --threads: Number of threads to use (default is 10).
+- --proc: Number of processes to use (default is 0, which means no multiprocessing).
+- -p, --port: The SSH port (default is 22).
+- -d, --debug: Enable error outputs for debugging.
+- -v, --verbose: Enable logging outputs
 
 Example
 
 ```bash
 kaseki ssh 192.168.1.100 -p 22 -u admin -P passwords.txt -t 5 --procs 2 -v
 ```
+
+---
 
 ### Contributing
 
@@ -52,7 +54,7 @@ Contributions are welcome! Please feel free to submit issues, create pull reques
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-##### Acknowledgments
+#### Acknowledgments
 
 Paramiko for SSH connectivity.
 Termcolor for colored terminal output.
